@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<!-- Адаптация под мобильные экраны -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Приключение Героя 🎮</title>
+<style>
+  /* Базовые стили — убираем отступы и прокрутку */
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: #87CEEB;
+    font-family: 'Comic Sans MS', 'Trebuchet MS', sans-serif;
+    user-select: none; -webkit-user-select: none;
+    touch-action: none; /* отключаем случайный скролл/зум */
+  }
+
+  /* Игровой контейнер */
+  #gameWrap {
+    position: relative;
+    width: 100vw; height: 100vh;
+    overflow: hidden;
+  }
+
+  /* Холст игры — фон теперь рисуется в JS */
+  #gameCanvas {
+    display: block;
+    width: 100%; height: 100%;
+  }
+
+  /* Счётчик монет сверху */
+  #hud {
+    position: absolute;
+    top: 12px; left: 12px; right: 12px;
+    display: flex; justify-content: space-between; align-items: center;
+    pointer-events: none;
+    font-size: 20px;
+    font-weight: bold;
+    color: #fff;
+    text-shadow: 2px 2px 0 #333, -1px -1px 0 #333;
+  }
+  #coins {
+    background: rgba(255, 215, 0, 0.85);
+    padding: 8px 16px;
+    border-radius: 20px;
+    border: 3px solid #B8860B;
+  }
+  #hint {
+    background: rgba(0,0,0,0.35);
+    padding: 8px 14px;
+    border-radius: 16px;
+    font-size: 14px;
+  }
+
+  /* Кнопки управления внизу экрана */
+  #controls {
+    position: absolute;
+    bottom: 16px; left: 0; right: 0;
+    display: flex; justify-content: space-between;
+    padding: 0 16px;
+    pointer-events: none;
+  }
+  .btn {
+    pointer-events: auto;
+    min-width: 72px; min-height: 72px;
+    width: 80px; height: 80px;
+    border: none; border-radius: 50%;
+    background: rgba(255,255,255,0.85);
+    color: #2c3e50;
+    font-size: 32px; font-weight: bold;
+    box-shadow: 0 4px 0 rgba(0,0,0,0.25), 0 6px 12px rgba(0,0,0,0.2);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: transform 0.08s, background 0.1s;
+  }
+  .btn:active, .btn.active {
+    transform: translateY(3px);
+    box-shadow: 0 1px 0 rgba(0,0,0,0.25), 0 2px 6px rgba(0,0,0,0.2);
+    background: rgba(255, 220, 100, 0.95);
+  }
+  .btn-left, .btn-right { font-size: 36px; }
+  .btn-jump {
+    width: 96px; height: 96px;
+    background: rgba(255, 120, 120, 0.9);
+    color: #fff;
+    font-size: 20px;
+  }
+  .btn-jump:active, .btn-jump.active {
+    background: rgba(255, 80, 80, 1);
+  }
+
+  .left-group, .right-group { display: flex; gap: 12px; align-items: flex-end; }
+
+  /* Модальное окно с сообщением */
+  #modal {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.55);
+    display: none;
+    align-items: center; justify-content: center;
+    z-index: 10;
+  }
+  #modal.show { display: flex; }
+  .modal-box {
+    background: #fff;
+    padding: 28px 32px;
+    border-radius: 24px;
+    text-align: center;
+    max-width: 85%;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    border: 4px solid #FFD700;
+  }
+  .modal-box h2 {
+    font-size: 28px;
+    color: #e67e22;
+    margin-bottom: 12px;
+  }
+  .modal-box p {
+    font-size: 18px;
+    color: #555;
+    margin-bottom: 20px;
+  }
+  .modal-box button {
+    background: linear-gradient(to bottom, #4CAF50, #2E8B2E);
+    color: #fff;
+    border: none;
+    padding: 14px 28px;
+    font-size: 20px;
+    font-weight: bold;
+    border-radius: 16px;
+    cursor: pointer;
+    box-shadow: 0 4px 0 #1B5E20;
+    font-family: inherit;
+  }
+  .modal-box button:active {
+    transform: translateY(3px);
+    box-shadow: 0 1px 0 #1B5E20;
+  }
+</style>
+</head>
+<body>
+<div id="gameWrap">
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- Счётчик и подсказка -->
+  <div id="hud">
+    <div id="coins">🪙 0 / 3</div>
+    <div id="hint">Собери 3 монеты и дойди до флага 🚩</div>
+  </div>
+
+  <!-- Кнопки управления -->
+  <div id="controls">
+    <div class="left-group">
+      <button class="btn btn-left" id="btnLeft">◀</button>
+      <button class="btn btn-right" id="btnRight">▶</button>
+    </div>
+    <div class="right-group">
+      <button class="btn btn-jump" id="btnJump">ПРЫГ</button>
+    </div>
+  </div>
+
+  <!-- Модальное окно победы/поражения -->
+  <div id="modal">
+    <div class="modal-box">
+      <h2 id="modalTitle">Ура!</h2>
+      <p id="modalText">Уровень пройден!</p>
+      <button id="restartBtn">Играть снова</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =======================================================
+   ИГРА-ПЛАТФОРМЕР ДЛЯ ДЕТЕЙ
+   ======================================================= */
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// Логическое разрешение игры (мир игры)
+const WORLD_W = 800;
+const WORLD_H = 500;
+
+// Адаптация canvas под размер экрана с сохранением пропорций
+function resizeCanvas() {
+  const ratio = WORLD_W / WORLD_H;
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  if (w / h > ratio) {
+    canvas.style.width = (h * ratio) + 'px';
+    canvas.style.height = h + 'px';
+  } else {
+    canvas.style.width = w + 'px';
+    canvas.style.height = (w / ratio) + 'px';
+  }
+  canvas.width = WORLD_W;
+  canvas.height = WORLD_H;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+/* ---------- СОСТОЯНИЕ ИГРЫ ---------- */
+let gameState = 'playing'; // 'playing' | 'win' | 'lose'
+let coinsCollected = 0;
+const TOTAL_COINS = 3;
+
+/* ---------- ИГРОК ---------- */
+const player = {
+  x: 50, y: 300,
+  w: 32, h: 32,
+  vx: 0, vy: 0,
+  speed: 220,
+  jumpPower: 520,
+  onGround: false,
+  facing: 1
+};
+
+/* ---------- ПЛАТФОРМЫ ---------- */
+const platformsTemplate = [
+  { x: 0,   y: 440, w: 200, h: 60 },
+  { x: 260, y: 400, w: 120, h: 20 },
+  { x: 420, y: 350, w: 120, h: 20 },
+  { x: 580, y: 300, w: 140, h: 20 },
+  { x: 400, y: 230, w: 120, h: 20 },
+  { x: 200, y: 180, w: 100, h: 20 },
+  { x: 620, y: 440, w: 180, h: 60 }
+];
+let platforms = [];
+
+/* ---------- МОНЕТЫ ---------- */
+const coinsTemplate = [
+  { x: 310, y: 370 },
+  { x: 470, y: 320 },
+  { x: 240, y: 150 }
+];
+let coins = [];
+
+/* ---------- ФИНИШНЫЙ ФЛАГ ---------- */
+const flag = { x: 700, y: 380, w: 30, h: 60 };
+
+/* ---------- ОБЛАКА (декор) ---------- */
+const clouds = [
+  { x: 100, y: 70, r: 30 },
+  { x: 350, y: 50, r: 40 },
+  { x: 600, y: 90, r: 35 },
+  { x: 750, y: 40, r: 28 }
+];
+
+/* ---------- ВВОД: КЛАВИАТУРА ---------- */
+const keys = { left: false, right: false, jump: false, jumpPressed: false };
+
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = true;
+  if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = true;
+  if ((e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') && !keys.jump) {
+    keys.jump = true;
+    keys.jumpPressed = true;
+  }
+  if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
+});
+window.addEventListener('keyup', (e) => {
+  if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = false;
+  if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = false;
+  if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') keys.jump = false;
+});
+
+/* ---------- ВВОД: КНОПКИ НА ЭКРАНЕ ---------- */
+function bindButton(id, keyName, isJump = false) {
+  const btn = document.getElementById(id);
+  const start = (e) => {
+    e.preventDefault();
+    keys[keyName] = true;
+    if (isJump) keys.jumpPressed = true;
+    btn.classList.add('active');
+  };
+  const end = (e) => {
+    e.preventDefault();
+    keys[keyName] = false;
+    btn.classList.remove('active');
+  };
+  btn.addEventListener('touchstart', start, { passive: false });
+  btn.addEventListener('touchend', end, { passive: false });
+  btn.addEventListener('touchcancel', end, { passive: false });
+  btn.addEventListener('mousedown', start);
+  btn.addEventListener('mouseup', end);
+  btn.addEventListener('mouseleave', end);
+}
+bindButton('btnLeft', 'left');
+bindButton('btnRight', 'right');
+bindButton('btnJump', 'jump', true);
+
+document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+
+/* ---------- СБРОС УРОВНЯ ---------- */
+function resetLevel() {
+  player.x = 50; player.y = 300;
+  player.vx = 0; player.vy = 0;
+  player.onGround = false;
+  coinsCollected = 0;
+  gameState = 'playing';
+  platforms = platformsTemplate.map(p => ({...p}));
+  coins = coinsTemplate.map(c => ({...c, collected: false, bob: Math.random() * Math.PI * 2}));
+  updateHUD();
+  document.getElementById('modal').classList.remove('show');
+}
+
+/* ---------- ОБНОВЛЕНИЕ HUD ---------- */
+function updateHUD() {
+  document.getElementById('coins').textContent = `🪙 ${coinsCollected} / ${TOTAL_COINS}`;
+}
+
+/* ---------- ФИЗИКА И ОБНОВЛЕНИЕ ---------- */
+function update(dt) {
+  if (gameState !== 'playing') return;
+
+  player.vx = 0;
+  if (keys.left)  { player.vx = -player.speed; player.facing = -1; }
+  if (keys.right) { player.vx =  player.speed; player.facing =  1; }
+
+  if (keys.jumpPressed && player.onGround) {
+    player.vy = -player.jumpPower;
+    player.onGround = false;
+  }
+  keys.jumpPressed = false;
+
+  const gravity = 1400;
+  player.vy += gravity * dt;
+  if (player.vy > 900) player.vy = 900;
+
+  // Движение по X
+  player.x += player.vx * dt;
+  for (const p of platforms) {
+    if (rectOverlap(player, p)) {
+      if (player.vx > 0) player.x = p.x - player.w;
+      else if (player.vx < 0) player.x = p.x + p.w;
+    }
+  }
+  if (player.x < 0) player.x = 0;
+  if (player.x + player.w > WORLD_W) player.x = WORLD_W - player.w;
+
+  // Движение по Y
+  player.y += player.vy * dt;
+  player.onGround = false;
+  for (const p of platforms) {
+    if (rectOverlap(player, p)) {
+      if (player.vy > 0) {
+        player.y = p.y - player.h;
+        player.vy = 0;
+        player.onGround = true;
+      } else if (player.vy < 0) {
+        player.y = p.y + p.h;
+        player.vy = 0;
+      }
+    }
+  }
+
+  // Падение в пропасть
+  if (player.y > WORLD_H + 50) {
+    gameState = 'lose';
+    showModal('Упс! 😵', 'Попробуй снова');
+  }
+
+  // Сбор монет
+  for (const c of coins) {
+    if (c.collected) continue;
+    c.bob += dt * 4;
+    const cx = c.x, cy = c.y + Math.sin(c.bob) * 3;
+    if (circleRectOverlap(cx, cy, 12, player)) {
+      c.collected = true;
+      coinsCollected++;
+      updateHUD();
+    }
+  }
+
+  // Проверка финиша
+  const flagRect = { x: flag.x, y: flag.y, w: flag.w, h: flag.h };
+  if (rectOverlap(player, flagRect) && coinsCollected === TOTAL_COINS) {
+    gameState = 'win';
+    showModal('Ура! 🎉', 'Уровень пройден!');
+  }
+}
+
+/* ---------- ПРОВЕРКИ КОЛЛИЗИЙ ---------- */
+function rectOverlap(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x &&
+         a.y < b.y + b.h && a.y + a.h > b.y;
+}
+function circleRectOverlap(cx, cy, r, rect) {
+  const nx = Math.max(rect.x, Math.min(cx, rect.x + rect.w));
+  const ny = Math.max(rect.y, Math.min(cy, rect.y + rect.h));
+  const dx = cx - nx, dy = cy - ny;
+  return dx*dx + dy*dy < r*r;
+}
+
+/* ---------- ОТРИСОВКА ---------- */
+function draw() {
+  // ⭐ ГЛАВНОЕ ИСПРАВЛЕНИЕ: очищаем холст перед каждым кадром,
+  // чтобы не было «хвостов» и повторений персонажа/монет.
+  ctx.clearRect(0, 0, WORLD_W, WORLD_H);
+
+  // Фон — градиент неба (рисуем на canvas, а не через CSS)
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, WORLD_H);
+  skyGrad.addColorStop(0, '#87CEEB');
+  skyGrad.addColorStop(0.7, '#B0E0E6');
+  skyGrad.addColorStop(1, '#FFE4B5');
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+
+  // Солнце
+  ctx.fillStyle = 'rgba(255, 235, 59, 0.4)';
+  ctx.beginPath();
+  ctx.arc(700, 70, 50, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#FFEB3B';
+  ctx.beginPath();
+  ctx.arc(700, 70, 35, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Облака
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  for (const c of clouds) {
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+    ctx.arc(c.x + c.r * 0.8, c.y + 5, c.r * 0.8, 0, Math.PI * 2);
+    ctx.arc(c.x - c.r * 0.8, c.y + 5, c.r * 0.7, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Платформы — зелёные с травкой
+  for (const p of platforms) {
+    ctx.fillStyle = '#8B4513';
+    ctx.fillRect(p.x, p.y + 6, p.w, p.h - 6);
+    ctx.fillStyle = '#4CAF50';
+    ctx.fillRect(p.x, p.y, p.w, 8);
+    ctx.fillStyle = '#66BB6A';
+    for (let i = 0; i < p.w; i += 10) {
+      ctx.fillRect(p.x + i, p.y - 2, 3, 4);
+    }
+  }
+
+  // Монеты (рисуем только те, что не собраны)
+  for (const c of coins) {
+    if (c.collected) continue;
+    const cy = c.y + Math.sin(c.bob) * 3;
+    ctx.fillStyle = 'rgba(255, 215, 0, 0.4)';
+    ctx.beginPath();
+    ctx.arc(c.x, cy, 16, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#FFD700';
+    ctx.beginPath();
+    ctx.arc(c.x, cy, 11, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#B8860B';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = '#FFF59D';
+    ctx.beginPath();
+    ctx.arc(c.x - 3, cy - 3, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Флаг
+  drawFlag(flag.x, flag.y);
+
+  // Герой — рисуем только в текущей позиции
+  drawPlayer();
+}
+
+function drawFlag(x, y) {
+  ctx.fillStyle = '#5D4037';
+  ctx.fillRect(x, y, 4, flag.h);
+  const ready = coinsCollected === TOTAL_COINS;
+  ctx.fillStyle = ready ? '#4CAF50' : '#9E9E9E';
+  ctx.beginPath();
+  ctx.moveTo(x + 4, y + 4);
+  ctx.lineTo(x + 28, y + 12);
+  ctx.lineTo(x + 4, y + 20);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#FFD700';
+  ctx.beginPath();
+  ctx.arc(x + 2, y, 4, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawPlayer() {
+  const cx = player.x + player.w / 2;
+  const cy = player.y + player.h / 2;
+  const r = player.w / 2;
+
+  // Тень
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  ctx.beginPath();
+  ctx.ellipse(cx, player.y + player.h + 2, r * 0.9, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Тело
+  ctx.fillStyle = '#2196F3';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#0D47A1';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Глаза
+  const eyeOffX = player.facing * 3;
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(cx - 6 + eyeOffX, cy - 4, 5, 0, Math.PI * 2);
+  ctx.arc(cx + 6 + eyeOffX, cy - 4, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(cx - 6 + eyeOffX * 1.3, cy - 4, 2.2, 0, Math.PI * 2);
+  ctx.arc(cx + 6 + eyeOffX * 1.3, cy - 4, 2.2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Рот
+  ctx.strokeStyle = '#0D47A1';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(cx + eyeOffX * 0.5, cy + 4, 5, 0.1 * Math.PI, 0.9 * Math.PI);
+  ctx.stroke();
+
+  // Щёчки
+  ctx.fillStyle = 'rgba(255, 100, 100, 0.5)';
+  ctx.beginPath();
+  ctx.arc(cx - 10, cy + 3, 3, 0, Math.PI * 2);
+  ctx.arc(cx + 10, cy + 3, 3, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/* ---------- МОДАЛЬНОЕ ОКНО ---------- */
+function showModal(title, text) {
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalText').textContent = text;
+  document.getElementById('modal').classList.add('show');
+}
+document.getElementById('restartBtn').addEventListener('click', () => {
+  resetLevel();
+});
+document.getElementById('restartBtn').addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  resetLevel();
+}, { passive: false });
+
+/* ---------- ГЛАВНЫЙ ЦИКЛ С DELTA TIME ---------- */
+let lastTime = performance.now();
+function loop(now) {
+  let dt = (now - lastTime) / 1000;
+  if (dt > 0.05) dt = 0.05;
+  lastTime = now;
+
+  update(dt);
+  draw();
+
+  requestAnimationFrame(loop);
+}
+
+/* ---------- СТАРТ ---------- */
+resetLevel();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
